@@ -1,0 +1,294 @@
+import argparse
+import csv
+import json
+import os
+import re
+import time
+from datetime import datetime
+
+import requests
+
+
+MODELS = [
+    "llama3:latest",
+    "mistral:latest",
+    "qwen2.5-coder:1.5b",
+    "tinyllama:latest",
+]
+
+
+def safe_name(value):
+    value = value.replace("/", "_").replace(":", "_")
+    return re.sub(r"[^a-zA-Z0-9_.-]", "_", value)
+
+
+def read_code_file(file_path):
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as file:
+        return file.read()
+
+
+def build_prompt(file_path, code):
+    return f"""
+You are a senior software engineer.
+
+Review this code file:
+
+File name: {file_path}
+
+Check:
+1. Bugs
+2. Security issues
+3. Performance problems
+4. Code quality
+5. Suggestions for improvement
+
+Give output in this format:
+- Summary
+- Issues found
+- Severity
+- Suggested fixes
+- Rating out of 5
+
+Code:
+```text
+{code}
+"""
+
+def call_ollama(model, prompt):
+"""
+Sends the prompt to Ollama API and measures wall-clock time.
+"""
+url = "http://localhost:11434/api/generate"
+payload = {
+    "model": model,
+    "prompt": prompt,
+    "stream": False,
+    "options": {
+        "temperature": 0.1,
+        "num_predict": 700
+    }
+}
+
+start_time = time.perf_counter()
+
+try:
+    response = requests.post(url, json=payload, timeout=1800)
+    wall_time_seconds = time.perf_counter() - start_time
+
+    if response.status_code != 200:
+        return {
+            "success": False,
+            "data": None,
+            "error": response.text,
+            "wall_time_seconds": wall_time_seconds
+        }
+
+    return {
+        "success": True,
+        "data": response.json(),
+        "error": None,
+        "wall_time_seconds": wall_time_seconds
+    }
+
+except Exception as e:
+    wall_time_seconds = time.perf_counter() - start_time
+
+    return {
+        "success": False,
+        "data": None,
+        "error": str(e),
+        "wall_time_seconds": wall_time_seconds
+    
+    }
+Formula:
+cost_per_run = hourly_price * runtime_seconds / 3600
+
+cost_per_1k_tokens = cost_per_run / total_tokens * 1000
+"""
+cost_per_run = ec2_hourly_price * (wall_time_seconds / 3600)
+
+if total_tokens > 0:
+    cost_per_1k_tokens = (cost_per_run / total_tokens) * 1000
+else:
+    cost_per_1k_tokens = 0
+
+return cost_per_run, cost_per_1k_tokens
+def main():
+parser = argparse.ArgumentParser(
+description="Run code review using multiple Ollama models and save metrics."
+)
+parser.add_argument(
+    "--code-file",
+    required=True,
+    help="Path of the code file to review. Example: sample_codes/sample_01.py"
+)
+
+parser.add_argument(
+    "--ec2-hourly-price",
+    type=float,
+    required=True,
+    help="Hourly price of EC2 instance. Example: 0.306"
+)
+
+parser.add_argument(
+    "--environment",
+    default="ec2-c6a-2xlarge",
+    help="Environment name for experiment tracking."
+)
+
+args = parser.parse_args()
+
+if not os.path.exists(args.code_file):
+    raise FileNotFoundError(f"Code file not found: {args.code_file}")
+
+os.makedirs("results", exist_ok=True)
+os.makedirs("reviews", exist_ok=True)
+
+timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+code = read_code_file(args.code_file)
+prompt = build_prompt(args.code_file, code)
+
+summary_file = f"results/summary_{timestamp}.csv"
+
+fieldnames = [
+    "timestamp",
+    "environment",
+    "model",
+    "code_file",
+    "status",
+    "wall_time_seconds",
+    "ollama_total_duration_seconds",
+    "load_duration_seconds",
+    "prompt_tokens",
+    "response_tokens",
+    "total_tokens",
+    "cost_per_run",
+    "cost_per_1k_tokens",
+    "review_file",
+    "metrics_file",
+    "error"
+]
+
+with open(summary_file, "w", newline="", encoding="utf-8") as csvfile:
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    writer.writeheader()
+
+    for model in MODELS:
+        print("=" * 80)
+        print(f"Running code review using model: {model}")
+        print("=" * 80)
+
+        result = call_ollama(model, prompt)
+
+        model_folder = safe_name(model)
+
+        review_dir = f"reviews/{model_folder}"
+        metrics_dir = f"results/{model_folder}"
+
+        os.makedirs(review_dir, exist_ok=True)
+        os.makedirs(metrics_dir, exist_ok=True)
+
+        review_file = f"{review_dir}/review_{timestamp}.md"
+        metrics_file = f"{metrics_dir}/metrics_{timestamp}.json"
+
+        if result["success"]:
+            data = result["data"]
+
+            review_text = data.get("response", "")
+
+            prompt_tokens = data.get("prompt_eval_count", 0)
+            response_tokens = data.get("eval_count", 0)
+            total_tokens = prompt_tokens + response_tokens
+
+            ollama_total_duration_seconds = data.get("total_duration", 0) / 1_000_000_000
+            load_duration_seconds = data.get("load_duration", 0) / 1_000_000_000
+
+            cost_per_run, cost_per_1k_tokens = calculate_cost(
+                args.ec2_hourly_price,
+                result["wall_time_seconds"],
+                total_tokens
+            )
+
+            status = "success"
+            error = ""
+
+        else:
+            review_text = f"ERROR:\n{result['error']}"
+
+            prompt_tokens = 0
+            response_tokens = 0
+            total_tokens = 0
+            ollama_total_duration_seconds = 0
+            load_duration_seconds = 0
+
+            cost_per_run, cost_per_1k_tokens = calculate_cost(
+                args.ec2_hourly_price,
+                result["wall_time_seconds"],
+                total_tokens
+            )
+
+            status = "failed"
+            error = result["error"]
+
+        with open(review_file, "w", encoding="utf-8") as file:
+            file.write("# Code Review Result\n\n")
+            file.write(f"Model: {model}\n\n")
+            file.write(f"Code file: {args.code_file}\n\n")
+            file.write(f"Environment: {args.environment}\n\n")
+            file.write(f"Timestamp: {timestamp}\n\n")
+            file.write("---\n\n")
+            file.write(review_text)
+
+        metrics = {
+            "timestamp": timestamp,
+            "environment": args.environment,
+            "model": model,
+            "code_file": args.code_file,
+            "status": status,
+            "wall_time_seconds": result["wall_time_seconds"],
+            "ollama_total_duration_seconds": ollama_total_duration_seconds,
+            "load_duration_seconds": load_duration_seconds,
+            "prompt_tokens": prompt_tokens,
+            "response_tokens": response_tokens,
+            "total_tokens": total_tokens,
+            "ec2_hourly_price": args.ec2_hourly_price,
+            "cost_per_run": cost_per_run,
+            "cost_per_1k_tokens": cost_per_1k_tokens,
+            "review_file": review_file,
+            "metrics_file": metrics_file,
+            "error": error
+        }
+
+        with open(metrics_file, "w", encoding="utf-8") as file:
+            json.dump(metrics, file, indent=2)
+
+        writer.writerow({
+            "timestamp": timestamp,
+            "environment": args.environment,
+            "model": model,
+            "code_file": args.code_file,
+            "status": status,
+            "wall_time_seconds": result["wall_time_seconds"],
+            "ollama_total_duration_seconds": ollama_total_duration_seconds,
+            "load_duration_seconds": load_duration_seconds,
+            "prompt_tokens": prompt_tokens,
+            "response_tokens": response_tokens,
+            "total_tokens": total_tokens,
+            "cost_per_run": cost_per_run,
+            "cost_per_1k_tokens": cost_per_1k_tokens,
+            "review_file": review_file,
+            "metrics_file": metrics_file,
+            "error": error
+        })
+
+        print(f"Status: {status}")
+        print(f"Review saved: {review_file}")
+        print(f"Metrics saved: {metrics_file}")
+
+print("=" * 80)
+print(f"Summary saved: {summary_file}")
+print("=" * 80)
+if name == "main":
+    main()
+
