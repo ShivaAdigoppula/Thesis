@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Student Project Hub</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      color: #222;
+    }
+
+    header {
+      background: #1f2937;
+      color: white;
+      padding: 24px;
+      text-align: center;
+    }
+
+    nav {
+      background: #111827;
+      padding: 12px;
+      text-align: center;
+    }
+
+    nav a {
+      color: white;
+      margin: 0 12px;
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 30px auto;
+      padding: 20px;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .project-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .project {
+      border: 1px solid #ddd;
+      padding: 16px;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+
+    input, textarea, button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      margin-bottom: 12px;
+      border: 1px solid #bbb;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      border: none;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    footer {
+      text-align: center;
+      padding: 16px;
+      background: #1f2937;
+      color: white;
+      margin-top: 30px;
+    }
+
+    .message {
+      padding: 12px;
+      background: #ecfdf5;
+      border: 1px solid #10b981;
+      border-radius: 6px;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>Student Project Hub</h1>
+    <p>A simple website to showcase academic and DevOps projects</p>
+  </header>
+
+  <nav>
+    <a href="#projects">Projects</a>
+    <a href="#skills">Skills</a>
+    <a href="#contact">Contact</a>
+  </nav>
+
+  <main class="container">
+    <section class="card">
+      <h2>About This Website</h2>
+      <p>
+        This page is created as a sample project for an automated LLM-based
+        code review pipeline. The goal is to test how different local models
+        review frontend code for quality, security, readability, and performance.
+      </p>
+    </section>
+
+    <section id="projects" class="card">
+      <h2>Projects</h2>
+
+      <div class="project-grid">
+        <div class="project">
+          <h3>LLM Code Review Pipeline</h3>
+          <p>Jenkins pulls code from GitHub and sends it to Ollama models.</p>
+        </div>
+
+        <div class="project">
+          <h3>Cloud Cost Comparison</h3>
+          <p>Compares local and cloud execution cost for AI workloads.</p>
+        </div>
+
+        <div class="project">
+          <h3>DevOps Automation</h3>
+          <p>Uses Git, Jenkins, Python, and Linux for repeatable experiments.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="skills" class="card">
+      <h2>Skills Used</h2>
+      <ul>
+        <li>HTML and CSS for website structure and design</li>
+        <li>JavaScript for simple form handling</li>
+        <li>GitHub for source code management</li>
+        <li>Jenkins for CI/CD automation</li>
+        <li>Ollama for local LLM inference</li>
+      </ul>
+    </section>
+
+    <section id="contact" class="card">
+      <h2>Contact Form</h2>
+
+      <div id="successMessage" class="message">
+        Your message was saved successfully.
+      </div>
+
+      <form id="contactForm">
+        <label>Name</label>
+        <input type="text" id="name" placeholder="Enter your name">
+
+        <label>Email</label>
+        <input type="email" id="email" placeholder="Enter your email">
+
+        <label>Message</label>
+        <textarea id="message" rows="5" placeholder="Write your message"></textarea>
+
+        <button type="submit">Send Message</button>
+      </form>
+    </section>
+  </main>
+
+  <footer>
+    <p>Student Project Hub © 2026</p>
+  </footer>
+
+  <script>
+    const form = document.getElementById("contactForm");
+    const successMessage = document.getElementById("successMessage");
+
+    form.addEventListener("submit", function(event) {
+      event.preventDefault();
+
+      const name = document.getElementById("name").value;
+      const email = document.getElementById("email").value;
+      const message = document.getElementById("message").value;
+
+      const contactData = {
+        name: name,
+        email: email,
+        message: message,
+        submittedAt: new Date().toISOString()
+      };
+
+      localStorage.setItem("latestContact", JSON.stringify(contactData));
+
+      successMessage.style.display = "block";
+      form.reset();
+    });
+  </script>
+</body>
+</html>
