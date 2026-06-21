@@ -64,7 +64,8 @@ def call_ollama(model, prompt):
         "stream": False,
         "options": {
             "temperature": 0.1,
-            "num_predict": 700
+            "num_predict": 700,
+            "num_ctx": 10000
         }
     }
 
