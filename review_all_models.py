@@ -111,6 +111,12 @@ def calculate_cost(ec2_hourly_price, wall_time_seconds, total_tokens):
     return cost_per_run, cost_per_1k_tokens
 
 
+def safe_tokens_per_second(tokens, duration_seconds):
+    if duration_seconds > 0:
+        return tokens / duration_seconds
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run code review using multiple Ollama models and save metrics."
@@ -126,7 +132,7 @@ def main():
         "--ec2-hourly-price",
         type=float,
         required=True,
-        help="Hourly price of EC2 instance. Example: 0.306"
+        help="Hourly price of EC2 instance. Example: 0.187"
     )
 
     parser.add_argument(
@@ -156,14 +162,25 @@ def main():
         "model",
         "code_file",
         "status",
+
         "wall_time_seconds",
         "ollama_total_duration_seconds",
         "load_duration_seconds",
+        "prompt_eval_duration_seconds",
+        "eval_duration_seconds",
+        "backend_overhead_seconds",
+
         "prompt_tokens",
         "response_tokens",
         "total_tokens",
+
+        "prompt_tokens_per_second",
+        "response_tokens_per_second",
+        "total_tokens_per_second",
+
         "cost_per_run",
         "cost_per_1k_tokens",
+
         "review_file",
         "metrics_file",
         "error"
@@ -191,6 +208,8 @@ def main():
             review_file = f"{review_dir}/review_{timestamp}.md"
             metrics_file = f"{metrics_dir}/metrics_{timestamp}.json"
 
+            wall_time_seconds = result["wall_time_seconds"]
+
             if result["success"]:
                 data = result["data"]
 
@@ -202,10 +221,32 @@ def main():
 
                 ollama_total_duration_seconds = data.get("total_duration", 0) / 1_000_000_000
                 load_duration_seconds = data.get("load_duration", 0) / 1_000_000_000
+                prompt_eval_duration_seconds = data.get("prompt_eval_duration", 0) / 1_000_000_000
+                eval_duration_seconds = data.get("eval_duration", 0) / 1_000_000_000
+
+                backend_overhead_seconds = wall_time_seconds - ollama_total_duration_seconds
+
+                if backend_overhead_seconds < 0:
+                    backend_overhead_seconds = 0
+
+                prompt_tokens_per_second = safe_tokens_per_second(
+                    prompt_tokens,
+                    prompt_eval_duration_seconds
+                )
+
+                response_tokens_per_second = safe_tokens_per_second(
+                    response_tokens,
+                    eval_duration_seconds
+                )
+
+                total_tokens_per_second = safe_tokens_per_second(
+                    total_tokens,
+                    ollama_total_duration_seconds
+                )
 
                 cost_per_run, cost_per_1k_tokens = calculate_cost(
                     args.ec2_hourly_price,
-                    result["wall_time_seconds"],
+                    wall_time_seconds,
                     total_tokens
                 )
 
@@ -218,12 +259,20 @@ def main():
                 prompt_tokens = 0
                 response_tokens = 0
                 total_tokens = 0
+
                 ollama_total_duration_seconds = 0
                 load_duration_seconds = 0
+                prompt_eval_duration_seconds = 0
+                eval_duration_seconds = 0
+                backend_overhead_seconds = wall_time_seconds
+
+                prompt_tokens_per_second = 0
+                response_tokens_per_second = 0
+                total_tokens_per_second = 0
 
                 cost_per_run, cost_per_1k_tokens = calculate_cost(
                     args.ec2_hourly_price,
-                    result["wall_time_seconds"],
+                    wall_time_seconds,
                     total_tokens
                 )
 
@@ -245,15 +294,26 @@ def main():
                 "model": model,
                 "code_file": args.code_file,
                 "status": status,
-                "wall_time_seconds": result["wall_time_seconds"],
+
+                "wall_time_seconds": wall_time_seconds,
                 "ollama_total_duration_seconds": ollama_total_duration_seconds,
                 "load_duration_seconds": load_duration_seconds,
+                "prompt_eval_duration_seconds": prompt_eval_duration_seconds,
+                "eval_duration_seconds": eval_duration_seconds,
+                "backend_overhead_seconds": backend_overhead_seconds,
+
                 "prompt_tokens": prompt_tokens,
                 "response_tokens": response_tokens,
                 "total_tokens": total_tokens,
+
+                "prompt_tokens_per_second": prompt_tokens_per_second,
+                "response_tokens_per_second": response_tokens_per_second,
+                "total_tokens_per_second": total_tokens_per_second,
+
                 "ec2_hourly_price": args.ec2_hourly_price,
                 "cost_per_run": cost_per_run,
                 "cost_per_1k_tokens": cost_per_1k_tokens,
+
                 "review_file": review_file,
                 "metrics_file": metrics_file,
                 "error": error
@@ -268,20 +328,36 @@ def main():
                 "model": model,
                 "code_file": args.code_file,
                 "status": status,
-                "wall_time_seconds": result["wall_time_seconds"],
+
+                "wall_time_seconds": wall_time_seconds,
                 "ollama_total_duration_seconds": ollama_total_duration_seconds,
                 "load_duration_seconds": load_duration_seconds,
+                "prompt_eval_duration_seconds": prompt_eval_duration_seconds,
+                "eval_duration_seconds": eval_duration_seconds,
+                "backend_overhead_seconds": backend_overhead_seconds,
+
                 "prompt_tokens": prompt_tokens,
                 "response_tokens": response_tokens,
                 "total_tokens": total_tokens,
+
+                "prompt_tokens_per_second": prompt_tokens_per_second,
+                "response_tokens_per_second": response_tokens_per_second,
+                "total_tokens_per_second": total_tokens_per_second,
+
                 "cost_per_run": cost_per_run,
                 "cost_per_1k_tokens": cost_per_1k_tokens,
+
                 "review_file": review_file,
                 "metrics_file": metrics_file,
                 "error": error
             })
 
             print(f"Status: {status}")
+            print(f"Wall time: {wall_time_seconds:.2f} seconds")
+            print(f"Load time: {load_duration_seconds:.2f} seconds")
+            print(f"Prompt eval time: {prompt_eval_duration_seconds:.2f} seconds")
+            print(f"Generation time: {eval_duration_seconds:.2f} seconds")
+            print(f"Response tokens/sec: {response_tokens_per_second:.2f}")
             print(f"Review saved: {review_file}")
             print(f"Metrics saved: {metrics_file}")
 
